@@ -142,7 +142,7 @@ services:
       - superset_home:/app/superset_home
     command: >
       bash -c "
-      pip install --no-cache-dir pymysql mysqlclient &&
+      /app/.venv/bin/pip install --no-cache-dir pymysql mysqlclient &&
       superset db upgrade &&
       superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true &&
       superset init &&
