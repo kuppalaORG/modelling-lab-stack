@@ -1,0 +1,157 @@
+version: "3.9"
+
+services:
+  # MySQL (Source Database)
+  
+  mysql:
+    image: mysql:8.0
+    container_name: lab-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: lab
+      MYSQL_USER: labuser
+      MYSQL_PASSWORD: lab123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - labnet
+
+  # phpMyAdmin (MySQL UI)
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: lab-phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+    ports:
+      - "8081:80"
+    networks:
+      - labnet
+
+  
+  # StarRocks (Data Warehouse)
+  
+  starrocks:
+    image: starrocks/allin1-ubuntu:latest
+    container_name: lab-starrocks
+    restart: unless-stopped
+    ports:
+      - "8030:8030"   # FE HTTP
+      - "9030:9030"   # FE MySQL protocol
+      - "8040:8040"   # BE HTTP
+    volumes:
+      - starrocks_data:/data
+    networks:
+      - labnet
+
+  
+  # Airflow Database (Postgres)
+  
+  airflow-db:
+    image: postgres:15
+    container_name: lab-airflow-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_db:/var/lib/postgresql/data
+    networks:
+      - labnet
+
+  
+  # Airflow Webserver
+  
+  airflow-webserver:
+    image: apache/airflow:2.8.4
+    container_name: lab-airflow-web
+    restart: unless-stopped
+    depends_on:
+      - airflow-db
+      - mysql
+      - starrocks
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      _PIP_ADDITIONAL_REQUIREMENTS: "pymysql requests"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "
+      airflow db migrate &&
+      airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true &&
+      airflow webserver
+      "
+    networks:
+      - labnet
+
+  
+  # Airflow Scheduler
+  
+  airflow-scheduler:
+    image: apache/airflow:2.8.4
+    container_name: lab-airflow-scheduler
+    restart: unless-stopped
+    depends_on:
+      - airflow-webserver
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      _PIP_ADDITIONAL_REQUIREMENTS: "pymysql requests"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+    command: scheduler
+    networks:
+      - labnet
+
+  
+  # Superset (BI)
+  
+  superset:
+    image: apache/superset:latest
+    container_name: lab-superset
+    restart: unless-stopped
+    depends_on:
+      - starrocks
+    environment:
+      SUPERSET_SECRET_KEY: supersecret
+      SUPERSET_LOAD_EXAMPLES: "no"
+      PIP_ADDITIONAL_REQUIREMENTS: "pymysql"
+    ports:
+      - "8088:8088"
+    volumes:
+      - superset_home:/app/superset_home
+    command: >
+      bash -c "
+      superset db upgrade &&
+      superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true &&
+      superset init &&
+      superset run -h 0.0.0.0 -p 8088
+      "
+    networks:
+      - labnet
+
+networks:
+  labnet:
+
+volumes:
+  mysql_data:
+  starrocks_data:
+  airflow_db:
+  airflow_logs:
+  superset_home:
