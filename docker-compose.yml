@@ -136,6 +136,7 @@ services:
       - starrocks
     ports:
       - "8088:8088"
+      
     environment:
       SUPERSET_SECRET_KEY: supersecret
       SUPERSET_LOAD_EXAMPLES: "no"
