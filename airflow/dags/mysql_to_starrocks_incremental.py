@@ -161,6 +161,7 @@ def ensure_sr_db_and_table(mysql_conn, src_table: str, sr_db: str, sr_table: str
         ORDER BY ordinal_position
     """, (MYSQL["database"], src_table))
     cols = cur.fetchall() or []
+    cols = [{k.lower(): v for k, v in row.items()} for row in cols]
     if not cols:
         raise RuntimeError(f"MySQL schema not found for {MYSQL['database']}.{src_table}")
 
