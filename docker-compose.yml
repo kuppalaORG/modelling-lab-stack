@@ -86,6 +86,7 @@ services:
       _PIP_ADDITIONAL_REQUIREMENTS: "pymysql requests"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/requirements.txt:/opt/airflow/requirements.txt:ro
       - airflow_logs:/opt/airflow/logs
     ports:
       - "8080:8080"
@@ -115,7 +116,11 @@ services:
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - airflow_logs:/opt/airflow/logs
-    command: scheduler
+    command: >
+      bash -c "
+      pip install --no-cache-dir -r /opt/airflow/requirements.txt &&
+      airflow scheduler
+      "
     networks:
       - labnet
 
