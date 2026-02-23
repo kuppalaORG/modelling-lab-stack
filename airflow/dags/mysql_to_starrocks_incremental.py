@@ -119,8 +119,8 @@ def sync_one_table(src: str, dst: str, watermark_col: str):
         if not rows:
             return
 
+        ensure_sr_db_and_table(conn, src, SR_DB, dst)
         payload = "\n".join(json.dumps(r, default=str) for r in rows)
-
         resp = stream_load(SR_DB, dst, payload)
 
         log.info(
@@ -150,7 +150,67 @@ def sync_one_table(src: str, dst: str, watermark_col: str):
             except Exception:
                 pass
 
+import pymysql as sr_pymysql
 
+def ensure_sr_db_and_table(mysql_conn, src_table: str, sr_db: str, sr_table: str):
+    cur = mysql_conn.cursor(pymysql.cursors.DictCursor)
+    cur.execute("""
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema=%s AND table_name=%s
+        ORDER BY ordinal_position
+    """, (MYSQL["database"], src_table))
+    cols = cur.fetchall() or []
+    if not cols:
+        raise RuntimeError(f"MySQL schema not found for {MYSQL['database']}.{src_table}")
+
+    def map_type(t: str) -> str:
+        t = (t or "").lower()
+        if t in ("tinyint", "smallint", "mediumint", "int", "integer", "bigint"):
+            return "BIGINT"
+        if t in ("float", "double", "decimal", "numeric"):
+            return "DOUBLE"
+        if t in ("datetime", "timestamp"):
+            return "DATETIME"
+        if t == "date":
+            return "DATE"
+        # everything else -> varchar
+        return "VARCHAR(65533)"
+
+    col_names = [c["column_name"] for c in cols]
+    col_defs = ",\n  ".join([f"`{c['column_name']}` {map_type(c['data_type'])}" for c in cols])
+
+    # Choose a safe DUPLICATE KEY column
+    if "id" in col_names:
+        key_col = "id"
+    else:
+        # find first column that ends with _id
+        id_like = next((c for c in col_names if c.lower().endswith("_id")), None)
+        key_col = id_like or col_names[0]
+
+    create_db_sql = f"CREATE DATABASE IF NOT EXISTS `{sr_db}`;"
+    create_tbl_sql = f"""
+        CREATE TABLE IF NOT EXISTS `{sr_db}`.`{sr_table}` (
+        {col_defs}
+        )
+        DUPLICATE KEY(`{key_col}`)
+        DISTRIBUTED BY HASH(`{key_col}`) BUCKETS 4
+        PROPERTIES ("replication_num"="1");
+        """.strip()
+
+    sr = sr_pymysql.connect(
+        host="starrocks",
+        port=9030,
+        user=SR_USER,
+        password=SR_PASS,
+        autocommit=True,
+    )
+    try:
+        with sr.cursor() as c:
+            c.execute(create_db_sql)
+            c.execute(create_tbl_sql)
+    finally:
+        sr.close()
 def run_all():
     for t in TABLES:
         sync_one_table(t["src"], t["dst"], t["watermark"])
