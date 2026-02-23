@@ -134,6 +134,7 @@ services:
       - superset-db
     environment:
       SUPERSET_SECRET_KEY: supersecret
+      WEBSERVER_BASEURL: "http://3.239.82.216:8088"
       SUPERSET_LOAD_EXAMPLES: "no"
       SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://superset:superset@superset-db:5432/superset
     ports:
