@@ -131,10 +131,12 @@ services:
     restart: unless-stopped
     depends_on:
       - starrocks
+      - superset-db
     environment:
       SUPERSET_SECRET_KEY: supersecret
       SUPERSET_LOAD_EXAMPLES: "no"
-      PIP_ADDITIONAL_REQUIREMENTS: "pymysql"
+      SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://superset:superset@superset-db:5432/superset
+      PIP_ADDITIONAL_REQUIREMENTS: "psycopg2-binary pymysql"
     ports:
       - "8088:8088"
     volumes:
@@ -143,12 +145,24 @@ services:
       bash -c "
       superset db upgrade &&
       superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true &&
-      superset init &&
+      superset init || true &&
       superset run -h 0.0.0.0 -p 8088
       "
     networks:
       - labnet
 
+  superset-db:
+    image: postgres:15
+    container_name: lab-superset-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: superset
+      POSTGRES_PASSWORD: superset
+      POSTGRES_DB: superset
+    volumes:
+      - superset_db:/var/lib/postgresql/data
+    networks:
+      - labnet
 networks:
   labnet:
 
@@ -158,3 +172,4 @@ volumes:
   airflow_db:
   airflow_logs:
   superset_home:
+  superset_db:
