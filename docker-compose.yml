@@ -107,7 +107,7 @@ services:
     container_name: lab-airflow-scheduler
     restart: unless-stopped
     depends_on:
-      - airflow-webserver
+      - airflow-db
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
@@ -118,12 +118,10 @@ services:
       - airflow_logs:/opt/airflow/logs
     command: >
       bash -c "
-      pip install --no-cache-dir -r /opt/airflow/requirements.txt &&
       airflow scheduler
       "
     networks:
       - labnet
-
   
   # Superset (BI)
   
