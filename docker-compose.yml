@@ -132,27 +132,39 @@ services:
     depends_on:
       - starrocks
       - superset-db
-    environment:
-      SUPERSET_SECRET_KEY: "supersecret"      # keep constant always
-      SUPERSET_LOAD_EXAMPLES: "no"
-      SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://superset:superset@superset-db:5432/superset
-
-      # Helps with proxy/IP access + CSRF/session stability
-      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
     ports:
       - "8088:8088"
+    environment:
+      SUPERSET_SECRET_KEY: supersecret
+      SUPERSET_LOAD_EXAMPLES: "no"
+      SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://superset:superset@superset-db:5432/superset
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+      WEBSERVER_BASEURL: "http://3.239.82.216:8088"
     volumes:
       - superset_home:/app/superset_home
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+
+    # Force shell as entrypoint so quoting never breaks
     entrypoint: ["/bin/bash", "-lc"]
-    command: >
-      /app/.venv/bin/python -m pip install --no-cache-dir pymysql &&
-      /app/.venv/bin/superset db upgrade &&
-      /app/.venv/bin/superset fab create-admin
-        --username admin --firstname Admin --lastname User
-        --email admin@example.com --password admin || true &&
-      /app/.venv/bin/superset init &&
-      /app/docker/docker-bootstrap.sh app-gunicorn
+
+    # Use exec so Superset becomes PID 1 (prevents “exit 0” weirdness)
+    command: |
+      set -euxo pipefail
+      echo "=== whoami ==="; whoami
+      echo "=== python ==="; which python; python -V
+      echo "=== pip ==="; which pip; pip -V
+
+      # Install into the SAME python environment Superset uses
+      python -m pip install --no-cache-dir --upgrade pip setuptools wheel
+      python -m pip install --no-cache-dir pymysql
+
+      python -c "import pymysql; print('pymysql OK', pymysql.__version__)"
+
+      superset db upgrade
+      superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true
+      superset init
+
+      exec superset run -h 0.0.0.0 -p 8088
     networks:
       - labnet
 
