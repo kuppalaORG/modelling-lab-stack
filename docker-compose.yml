@@ -126,12 +126,14 @@ services:
   # Superset (BI)
   
   superset:
-    image: apache/superset:latest
+    build:
+      context: ./superset
+      dockerfile: Dockerfile
     container_name: lab-superset
     restart: unless-stopped
     depends_on:
-      - starrocks
       - superset-db
+      - starrocks
     ports:
       - "8088:8088"
     environment:
@@ -143,20 +145,13 @@ services:
     volumes:
       - superset_home:/app/superset_home
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py:ro
-
-    entrypoint: ["/bin/bash", "-lc"]
     command: >
-      set -euxo pipefail;
-      echo "=== whoami ==="; whoami;
-      echo "=== python ==="; which python; python -V;
-      echo "=== pip ==="; which pip; pip -V;
-      python -m pip install --no-cache-dir --upgrade pip setuptools wheel;
-      python -m pip install --no-cache-dir pymysql;
-      python -c "import pymysql; print('pymysql OK', pymysql.__version__)";
-      superset db upgrade;
-      superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true;
-      superset init;
-      exec superset run -h 0.0.0.0 -p 8088;
+      /bin/bash -lc "
+      superset db upgrade &&
+      superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true &&
+      superset init &&
+      exec superset run -h 0.0.0.0 -p 8088
+      "
     networks:
       - labnet
 
