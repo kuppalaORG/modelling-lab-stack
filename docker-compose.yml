@@ -9,9 +9,9 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: lab
-      MYSQL_USER: labuser
-      MYSQL_PASSWORD: lab123
+      MYSQL_DATABASE: order_management
+      MYSQL_USER: user
+      MYSQL_PASSWORD: user123
     ports:
       - "3306:3306"
     volumes:

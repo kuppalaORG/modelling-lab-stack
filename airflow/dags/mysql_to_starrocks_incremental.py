@@ -7,7 +7,7 @@ import pymysql
 import requests
 import json
 
-MYSQL = dict(host="mysql", user="labuser", password="lab123", database="order_management")
+MYSQL = dict(host="mysql", user="user", password="user123", database="order_management")
 
 
 SR_USER = "root"
