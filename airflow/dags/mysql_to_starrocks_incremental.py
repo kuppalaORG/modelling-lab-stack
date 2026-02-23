@@ -43,6 +43,8 @@ default_args = {
 }
 
 
+from urllib.parse import urlparse
+
 def stream_load(db: str, table: str, json_lines: str) -> dict:
     url = f"{SR_FE}/api/{db}/{table}/_stream_load"
     label = f"airflow_{table}_{uuid.uuid4().hex[:12]}"
@@ -55,14 +57,25 @@ def stream_load(db: str, table: str, json_lines: str) -> dict:
         "label": label,
     }
 
-    r = requests.put(
-        url,
-        data=json_lines,
-        headers=headers,
-        auth=(SR_USER, SR_PASS),
-        timeout=180,
-        allow_redirects=True,
-    )
+    s = requests.Session()
+    s.auth = (SR_USER, SR_PASS)
+
+    # 1) First request WITHOUT following redirects
+    r = s.put(url, data=json_lines, headers=headers, timeout=60, allow_redirects=False)
+
+    # 2) If FE redirects to BE, rewrite the host if needed and retry once
+    if r.status_code in (301, 302, 303, 307, 308) and "Location" in r.headers:
+        loc = r.headers["Location"]
+        parsed = urlparse(loc)
+
+        # If FE sent 127.0.0.1, replace it with docker service hostname
+        if parsed.hostname in ("127.0.0.1", "localhost"):
+            fixed_loc = loc.replace(parsed.hostname, "starrocks")
+            log.warning("Stream load redirected to %s; rewriting to %s", loc, fixed_loc)
+            r = s.put(fixed_loc, data=json_lines, headers=headers, timeout=60, allow_redirects=False)
+        else:
+            # Try redirect as-is (might be reachable)
+            r = s.put(loc, data=json_lines, headers=headers, timeout=60, allow_redirects=False)
 
     if r.status_code >= 300:
         raise RuntimeError(f"Stream load HTTP failed: {r.status_code} {r.text[:500]}")
