@@ -126,7 +126,7 @@ services:
   # Superset (BI)
   
   superset:
-    image: apache/superset:6.0.1
+    image: apache/superset:latest
     container_name: lab-superset
     restart: unless-stopped
     depends_on:
@@ -135,6 +135,7 @@ services:
     environment:
       SUPERSET_SECRET_KEY: supersecret
       WEBSERVER_BASEURL: "http://3.239.82.216:8088"
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
       SUPERSET_LOAD_EXAMPLES: "no"
       SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://superset:superset@superset-db:5432/superset
       PIP_ADDITIONAL_REQUIREMENTS: "pymysql mysqlclient"
