@@ -44,48 +44,36 @@ default_args = {
 
 
 def stream_load(db: str, table: str, json_lines: str) -> dict:
-    """
-    StarRocks Stream Load (JSON)
-    - Must include Expect: 100-continue for your build (based on your error).
-    - Must verify response JSON 'Status' == 'SUCCESS' (HTTP 200 can still mean FAILED).
-    """
     url = f"{SR_FE}/api/{db}/{table}/_stream_load"
-
     label = f"airflow_{table}_{uuid.uuid4().hex[:12]}"
 
     headers = {
         "format": "json",
-        "strip_outer_array": "true",
+        "read_json_by_line": "true",
         "Content-Type": "application/json",
-        "Expect": "100-continue",  #  required (your error shows SR expects it)
+        "Expect": "100-continue",
         "label": label,
     }
 
-    # NOTE: Keep data as-is. Requests will send exactly the payload body.
     r = requests.put(
         url,
         data=json_lines,
         headers=headers,
         auth=(SR_USER, SR_PASS),
-        timeout=60,
+        timeout=180,
+        allow_redirects=True,
     )
 
     if r.status_code >= 300:
-        raise RuntimeError(f"Stream load HTTP failed: {r.status_code} {r.text}")
+        raise RuntimeError(f"Stream load HTTP failed: {r.status_code} {r.text[:500]}")
 
-    # Stream load usually returns JSON
     try:
         resp = r.json()
     except Exception:
-        # fallback if content-type is weird
-        try:
-            resp = json.loads(r.text)
-        except Exception:
-            raise RuntimeError(f"Stream load returned non-JSON response: {r.text}")
+        raise RuntimeError(f"Stream load returned non-JSON response: {r.text[:500]}")
 
     status = str(resp.get("Status", "")).upper()
     if status != "SUCCESS":
-        #  fail the task so Airflow shows failure + retry works properly
         raise RuntimeError(f"Stream load FAILED for {db}.{table}: {resp}")
 
     return resp
@@ -95,6 +83,9 @@ def sync_one_table(src: str, dst: str, watermark_col: str):
     var_key = f"wm_{src}"
     last_wm = Variable.get(var_key, default_var="1970-01-01 00:00:00")
     log.info("Sync start: %s -> %s | last_wm=%s", src, dst, last_wm)
+
+    # Optional but safer: lookback to avoid missing same-timestamp rows
+    last_wm_dt = datetime.fromisoformat(last_wm) - timedelta(minutes=2)
 
     conn = None
     cur = None
@@ -108,51 +99,46 @@ def sync_one_table(src: str, dst: str, watermark_col: str):
             WHERE `{watermark_col}` > %s
             ORDER BY `{watermark_col}` ASC
         """
-        cur.execute(sql, (last_wm,))
+        cur.execute(sql, (last_wm_dt,))
         rows = cur.fetchall() or []
         log.info("Fetched %s rows from MySQL table %s", len(rows), src)
 
         if not rows:
             return
 
-        # JSON Lines (one json object per line)
         payload = "\n".join(json.dumps(r, default=str) for r in rows)
 
-        #  Load into StarRocks
         resp = stream_load(SR_DB, dst, payload)
 
-        loaded = resp.get("NumberLoadedRows", None)
-        filtered = resp.get("NumberFilteredRows", None)
         log.info(
-            "%s -> %s stream load SUCCESS. mysql_rows=%s loaded=%s filtered=%s resp=%s",
+            "%s -> %s OK. mysql_rows=%s loaded=%s filtered=%s label=%s txn=%s",
             src,
             dst,
             len(rows),
-            loaded,
-            filtered,
-            resp,
+            resp.get("NumberLoadedRows"),
+            resp.get("NumberFilteredRows"),
+            resp.get("Label"),
+            resp.get("TxnId"),
         )
 
-        #  Only update watermark after SUCCESS
         max_wm = max(str(r[watermark_col]) for r in rows)
         Variable.set(var_key, max_wm)
         log.info("Updated watermark %s=%s", var_key, max_wm)
 
     finally:
-        try:
-            if cur:
+        if cur:
+            try:
                 cur.close()
-        except Exception:
-            pass
-        try:
-            if conn:
+            except Exception:
+                pass
+        if conn:
+            try:
                 conn.close()
-        except Exception:
-            pass
+            except Exception:
+                pass
 
 
 def run_all():
-    # If any table fails, task fails (good) so you see it in Airflow.
     for t in TABLES:
         sync_one_table(t["src"], t["dst"], t["watermark"])
 
