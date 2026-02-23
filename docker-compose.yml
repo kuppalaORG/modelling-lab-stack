@@ -136,16 +136,16 @@ services:
       SUPERSET_SECRET_KEY: supersecret
       SUPERSET_LOAD_EXAMPLES: "no"
       SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://superset:superset@superset-db:5432/superset
-      PIP_ADDITIONAL_REQUIREMENTS: "psycopg2-binary pymysql"
     ports:
       - "8088:8088"
     volumes:
       - superset_home:/app/superset_home
     command: >
       bash -c "
+      pip install --no-cache-dir pymysql mysqlclient &&
       superset db upgrade &&
       superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true &&
-      superset init || true &&
+      superset init &&
       superset run -h 0.0.0.0 -p 8088
       "
     networks:
