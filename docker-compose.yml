@@ -132,27 +132,38 @@ services:
     depends_on:
       - starrocks
       - superset-db
+
+    # IMPORTANT: allow writing into /app/.venv during startup install
+    user: "0"
+
     environment:
       SUPERSET_SECRET_KEY: supersecret
       WEBSERVER_BASEURL: "http://3.239.82.216:8088"
       SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
       SUPERSET_LOAD_EXAMPLES: "no"
       SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://superset:superset@superset-db:5432/superset
+
     ports:
       - "8088:8088"
+
     volumes:
       - superset_home:/app/superset_home
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+
     command: >
       bash -lc "
+      /app/.venv/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel &&
       /app/.venv/bin/python -m pip install --no-cache-dir pymysql &&
+      /app/.venv/bin/python -c 'import pymysql; print(\"pymysql\", pymysql.__version__)' &&
       /app/.venv/bin/superset db upgrade &&
       /app/.venv/bin/superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true &&
       /app/.venv/bin/superset init &&
       /app/.venv/bin/superset run -h 0.0.0.0 -p 8088
       "
+
     networks:
       - labnet
+      
   superset-db:
     image: postgres:15
     container_name: lab-superset-db
