@@ -6,12 +6,15 @@ from datetime import datetime, timedelta
 import pymysql
 import requests
 import json
+import logging
+
+log = logging.getLogger("airflow.task")
 
 MYSQL = dict(host="mysql", user="user", password="user123", database="order_management")
 
-
+SR_DB = "order_management_starrocks"
 SR_USER = "root"
-SR_PASS = ""  # blank for allin1 image
+SR_PASS = ""  
 SR_FE = "http://starrocks:8030"
 
 TABLES = [
@@ -25,19 +28,11 @@ TABLES = [
     {"src": "OrderDetails", "dst": "orderdetails_landing", "watermark": "updated_at"},
 ]
 
-default_args = {
-    "owner": "lab",
-    "retries": 1,
-    "retry_delay": timedelta(minutes=1),
-}
+default_args = {"owner": "lab", "retries": 1, "retry_delay": timedelta(minutes=1)}
 
 def stream_load(db: str, table: str, json_lines: str):
-    url = f"{SR_FE}/api/order_management_starrocks/{table}/_stream_load"
-    headers = {
-        "format": "json",
-        "strip_outer_array": "true",
-        "jsonpaths": "[]"
-    }
+    url = f"{SR_FE}/api/{db}/{table}/_stream_load"   
+    headers = {"format": "json", "strip_outer_array": "true"}
     r = requests.put(url, data=json_lines, headers=headers, auth=(SR_USER, SR_PASS), timeout=60)
     if r.status_code >= 300:
         raise RuntimeError(f"Stream load failed: {r.status_code} {r.text}")
@@ -46,34 +41,34 @@ def stream_load(db: str, table: str, json_lines: str):
 def sync_one_table(src: str, dst: str, watermark_col: str):
     var_key = f"wm_{src}"
     last_wm = Variable.get(var_key, default_var="1970-01-01 00:00:00")
+    log.info("Sync start: %s -> %s | last_wm=%s", src, dst, last_wm)
 
     conn = pymysql.connect(**MYSQL)
     cur = conn.cursor(pymysql.cursors.DictCursor)
 
     sql = f"""
       SELECT *
-      FROM {src}
-      WHERE {watermark_col} > %s
-      ORDER BY {watermark_col} ASC
+      FROM `{src}`
+      WHERE `{watermark_col}` > %s
+      ORDER BY `{watermark_col}` ASC
     """
     cur.execute(sql, (last_wm,))
     rows = cur.fetchall()
+    log.info("Fetched %s rows from MySQL table %s", len(rows), src)
 
     if not rows:
         cur.close()
         conn.close()
         return
 
-    # JSON Lines (one json object per line)
     payload = "\n".join(json.dumps(r, default=str) for r in rows)
 
-    # Load into StarRocks (upsert because target is PRIMARY KEY)
-    resp = stream_load("lab", dst, payload)
-    print(f"{src} -> {dst}: loaded {len(rows)} rows. resp={resp}")
+    resp = stream_load(SR_DB, dst, payload)  
+    log.info("%s -> %s loaded %s rows. resp=%s", src, dst, len(rows), resp)
 
-    # Update watermark to max updated_at we just processed
     max_wm = max(str(r[watermark_col]) for r in rows)
     Variable.set(var_key, max_wm)
+    log.info("Updated watermark %s=%s", var_key, max_wm)
 
     cur.close()
     conn.close()
@@ -90,7 +85,4 @@ with DAG(
     catchup=False,
     tags=["lab"],
 ) as dag:
-    PythonOperator(
-        task_id="sync_all_tables",
-        python_callable=run_all
-    )
+    PythonOperator(task_id="sync_all_tables", python_callable=run_all)
