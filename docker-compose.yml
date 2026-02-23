@@ -144,27 +144,19 @@ services:
       - superset_home:/app/superset_home
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py:ro
 
-    # Force shell as entrypoint so quoting never breaks
     entrypoint: ["/bin/bash", "-lc"]
-
-    # Use exec so Superset becomes PID 1 (prevents “exit 0” weirdness)
-    command: |
-      set -euxo pipefail
-      echo "=== whoami ==="; whoami
-      echo "=== python ==="; which python; python -V
-      echo "=== pip ==="; which pip; pip -V
-
-      # Install into the SAME python environment Superset uses
-      python -m pip install --no-cache-dir --upgrade pip setuptools wheel
-      python -m pip install --no-cache-dir pymysql
-
-      python -c "import pymysql; print('pymysql OK', pymysql.__version__)"
-
-      superset db upgrade
-      superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true
-      superset init
-
-      exec superset run -h 0.0.0.0 -p 8088
+    command: >
+      set -euxo pipefail;
+      echo "=== whoami ==="; whoami;
+      echo "=== python ==="; which python; python -V;
+      echo "=== pip ==="; which pip; pip -V;
+      python -m pip install --no-cache-dir --upgrade pip setuptools wheel;
+      python -m pip install --no-cache-dir pymysql;
+      python -c "import pymysql; print('pymysql OK', pymysql.__version__)";
+      superset db upgrade;
+      superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true;
+      superset init;
+      exec superset run -h 0.0.0.0 -p 8088;
     networks:
       - labnet
 
