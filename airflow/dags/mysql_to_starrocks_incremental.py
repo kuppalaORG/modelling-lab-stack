@@ -65,6 +65,10 @@ def q_ident(name: str) -> str:
     return f"`{name}`"
 
 
+def lower_keys(row: dict[str, Any]) -> dict[str, Any]:
+    return {str(k).lower(): v for k, v in row.items()}
+
+
 def map_mysql_to_starrocks(mysql_type: str) -> str:
     t = (mysql_type or "").lower()
     if t in {"tinyint", "smallint", "mediumint", "int", "integer", "bigint"}:
@@ -91,7 +95,8 @@ def get_mysql_schema(mysql_conn: pymysql.connections.Connection, src_table: str)
     with mysql_conn.cursor() as cur:
         cur.execute(sql, (MYSQL["database"], src_table))
         rows = cur.fetchall() or []
-    schema = {row["column_name"]: row["data_type"] for row in rows}
+    normalized = [lower_keys(row) for row in rows]
+    schema = {row["column_name"]: row["data_type"] for row in normalized}
     if not schema:
         raise RuntimeError(f"MySQL schema not found for {MYSQL['database']}.{src_table}")
     return schema
@@ -123,7 +128,8 @@ def get_starrocks_schema(
     with sr_conn.cursor() as cur:
         cur.execute(f"DESC {q_ident(db_name)}.{q_ident(table_name)}")
         rows = cur.fetchall() or []
-    schema = {row["Field"]: row["Type"] for row in rows}
+    normalized = [lower_keys(row) for row in rows]
+    schema = {row["field"]: row["type"] for row in normalized}
     return schema
 
 
