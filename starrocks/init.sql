@@ -78,16 +78,15 @@ PRIMARY KEY(ProductID)
 DISTRIBUTED BY HASH(ProductID) BUCKETS 4
 PROPERTIES ("replication_num"="1");
 
-CREATE TABLE IF NOT EXISTS orders_landing (
-  OrderID INT NOT NULL,
-  CustomerID INT,
-  EmployeeID INT,
-  OrderDate DATE,
-  ShipperID INT,
+CREATE TABLE IF NOT EXISTS orderdetails_landing (
+  OrderDetailID INT NOT NULL,
+  OrderID INT,
+  ProductID INT,
+  Quantity INT,
   updated_at DATETIME
 )
-PRIMARY KEY(OrderID)
-DISTRIBUTED BY HASH(OrderID) BUCKETS 4
+PRIMARY KEY(OrderDetailID)
+DISTRIBUTED BY HASH(OrderDetailID) BUCKETS 4
 PROPERTIES ("replication_num"="1");
 
 CREATE TABLE IF NOT EXISTS orderdetails_landing (

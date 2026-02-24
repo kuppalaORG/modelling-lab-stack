@@ -39,18 +39,32 @@ services:
   
   # StarRocks (Data Warehouse)
   
-  starrocks:
+  starrocks-init:
     image: starrocks/allin1-ubuntu:latest
-    container_name: lab-starrocks
-    restart: unless-stopped
-    ports:
-      - "8030:8030"   # FE HTTP
-      - "9030:9030"   # FE MySQL protocol
-      - "8040:8040"   # BE HTTP
-    volumes:
-      - starrocks_data:/data
+    container_name: lab-starrocks-init
+    depends_on:
+      - starrocks
     networks:
       - labnet
+    volumes:
+      - ./starrocks/init.sql:/init.sql:ro
+    entrypoint: ["/bin/bash", "-lc"]
+    command: |
+      set -euxo pipefail
+
+      echo "Waiting for StarRocks FE (mysql protocol) ..."
+      for i in {1..60}; do
+        if mysql -h starrocks -P 9030 -u root -e "SELECT 1" >/dev/null 2>&1; then
+          echo "StarRocks is ready ✅"
+          break
+        fi
+        sleep 2
+      done
+
+      echo "Running init.sql..."
+      mysql -h starrocks -P 9030 -u root < /init.sql
+      echo "StarRocks init done ✅"
+    restart: "no"
 
   
   # Airflow Database (Postgres)
