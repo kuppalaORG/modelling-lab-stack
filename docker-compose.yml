@@ -61,20 +61,20 @@ services:
     volumes:
       - ./starrocks/init.sql:/init.sql:ro
     entrypoint: ["/bin/bash","-lc"]
-    command: >
-      set -euxo pipefail;
-      echo "Waiting for StarRocks FE (mysql protocol)...";
-      for i in {1..60}; do
-        if mysql -h starrocks -P 9030 -u root -e "SELECT 1" >/dev/null 2>&1; then
-          echo "StarRocks is ready ";
-          break;
-        fi;
-        echo "still waiting...";
-        sleep 2;
-      done;
-      mysql -h starrocks -P 9030 -u root < /init.sql;
-      echo "init.sql executed"
-
+    command:
+      - |
+        set -euxo pipefail
+        echo "Waiting for StarRocks FE (mysql protocol)..."
+        for i in {1..60}; do
+          if mysql -h starrocks -P 9030 -u root -e "SELECT 1" >/dev/null 2>&1; then
+            echo "StarRocks is ready"
+            break
+          fi
+          echo "still waiting..."
+          sleep 2
+        done
+        mysql -h starrocks -P 9030 -u root < /init.sql
+        echo "init.sql executed"
   # Airflow Database (Postgres)
   
   airflow-db:
