@@ -53,9 +53,10 @@ sudo systemctl start docker
 
 
 Step 4 — Clone Repository
-git clone <REPO_URL>
+git clone https://github.com/kuppalaORG/modelling-lab-stack.git
 cd modelling-lab-stack
-sudo docker compose up -d
+bash scripts/bootstrap.sh
+sudo docker compose ps -a
 
 
 Step 4 — Clone Repository
