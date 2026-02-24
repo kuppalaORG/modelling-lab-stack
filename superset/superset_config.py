@@ -1,5 +1,6 @@
 import os
-
+import pymysql
+pymysql.install_as_MySQLdb()
 SECRET_KEY = os.environ.get("SUPERSET_SECRET_KEY", "supersecret")
 
 ENABLE_PROXY_FIX = True
