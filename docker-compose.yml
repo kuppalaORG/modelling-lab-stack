@@ -52,26 +52,35 @@ services:
       - labnet
 
   starrocks-init:
-    image: starrocks/allin1-ubuntu:latest
+    image: mysql:8.0
+    container_name: lab-starrocks-init
     depends_on:
       - starrocks
+    networks:
+      - labnet
     volumes:
       - ./starrocks/init.sql:/init.sql:ro
     entrypoint: ["/bin/bash","-lc"]
-    command: >
-      set -euxo pipefail;
-      echo "Waiting for StarRocks FE (mysql protocol)...";
-      for i in {1..60}; do
+    command: |
+      set -euxo pipefail
+
+      echo "Waiting for StarRocks FE (mysql protocol) ..."
+      for i in {1..240}; do
         if mysql -h starrocks -P 9030 -u root -e "SELECT 1" >/dev/null 2>&1; then
-          break;
-        fi;
-        sleep 2;
-      done;
-      mysql -h starrocks -P 9030 -u root < /init.sql;
-      echo " init.sql executed"
-    networks:
-      - labnet
-  
+          echo "StarRocks is ready ✅"
+          break
+        fi
+        sleep 2
+      done
+
+      # hard fail if still not ready
+      mysql -h starrocks -P 9030 -u root -e "SELECT 1"
+
+      echo "Running init.sql..."
+      mysql -h starrocks -P 9030 -u root < /init.sql
+      echo "init.sql executed ✅"
+    restart: "no"
+    
   # Airflow Database (Postgres)
   
   airflow-db:
